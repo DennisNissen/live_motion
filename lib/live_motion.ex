@@ -290,9 +290,14 @@ defmodule LiveMotion do
 
   - `id`: *Required*. A unique dom element id for the component.
   '''
+
+  attr :id, :string, required: true, doc: "A unique dom element id for the component."
+  attr :rest, :global,
+       doc: " Additional HTML attributes to add to the tag, ensuring proper escaping."
+
   def presence(assigns) do
     ~H"""
-    <div id={@id} phx-hook="Presence">
+    <div id={@id} phx-hook="Presence" {@rest}>
       <%= render_slot(@inner_block) %>
     </div>
     """
