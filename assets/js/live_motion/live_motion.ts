@@ -168,7 +168,7 @@ export function createLiveMotion() {
       );
     }
 
-    if (motion) {
+    if (motion && motion.getConfig()?.exit) {
       const duration = getDuration(motion.getConfig()?.transition);
 
       // We need to call the LiveSocket transition so that LiveView

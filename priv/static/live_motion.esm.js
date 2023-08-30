@@ -1790,14 +1790,14 @@ function createLiveMotion() {
     }
   });
   window.addEventListener("live_motion:hide", (e) => {
-    var _a;
+    var _a, _b;
     const { target } = e;
     const motion = motionHooks.get(target);
     if (!motion && liveSocket.isDebugEnabled()) {
       console.warn("[LiveMotion] Motion element not found. Did you forget to make your target a LiveMotion.motion component?");
     }
-    if (motion) {
-      const duration = getDuration((_a = motion.getConfig()) == null ? void 0 : _a.transition);
+    if (motion && ((_a = motion.getConfig()) == null ? void 0 : _a.exit)) {
+      const duration = getDuration((_b = motion.getConfig()) == null ? void 0 : _b.transition);
       liveSocket.transition(duration, () => {
         var _a2;
         const motion2 = motionHooks.get(target);
