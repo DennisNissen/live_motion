@@ -1,7 +1,7 @@
 defmodule LiveMotion.MixProject do
   use Mix.Project
 
-  @version "0.2.0"
+  @version "0.3.1"
 
   def project do
     [
@@ -31,13 +31,13 @@ defmodule LiveMotion.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:phoenix, "~> 1.6.0"},
+      {:phoenix, ">= 1.6.0 and < 1.8.0"},
       {:phoenix_html, "~> 3.1"},
-      {:phoenix_live_view, "~> 0.17.0"},
-      {:jason, "~> 1.3.0", optional: true},
+      {:phoenix_live_view, "~> 0.18"},
+      {:jason, "~> 1.3", optional: true},
       {:esbuild, "~> 0.2", only: :dev},
       {:telemetry, "~> 0.4.2 or ~> 1.0"},
-      {:ex_doc, "~> 0.27", only: :dev, runtime: false}
+      {:ex_doc, "~> 0.29", only: :dev, runtime: false}
     ]
   end
 
@@ -65,6 +65,7 @@ defmodule LiveMotion.MixProject do
 
   defp aliases do
     [
+      setup: ["deps.get", "cmd --cd assets npm install"],
       "assets.build": ["esbuild module", "esbuild cdn", "esbuild cdn_min", "esbuild main"],
       "assets.watch": ["esbuild module --watch"]
     ]

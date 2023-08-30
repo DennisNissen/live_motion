@@ -5,7 +5,6 @@ import {
   LiveMotionConfig,
   LiveMotionHideEvent,
   LiveMotionHook,
-  LiveMotionHooksDefinition,
   LiveMotionOptions,
   LiveMotionShowEvent,
   LiveMotionToggleEvent,
