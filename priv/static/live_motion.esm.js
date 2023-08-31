@@ -1667,10 +1667,13 @@ function createMotionState(options = {}, parent) {
 }
 
 // js/live_motion/helpers.ts
-function compactObj(obj) {
-  return Object.entries(obj).reduce((acc, [key, value]) => {
-    if (value !== void 0 && value !== null) {
-      acc[key] = value;
+function isEmpty(obj) {
+  return !obj || !Object.keys(obj).length;
+}
+function withoutEmptyValues(obj) {
+  return Object.entries(obj).reduce((acc, [k, v]) => {
+    if (typeof v === "object" && !isEmpty(v)) {
+      acc[k] = v;
     }
     return acc;
   }, {});
@@ -1679,7 +1682,73 @@ function compactObj(obj) {
 // js/live_motion/live_motion.ts
 var MAX_TRANSITION_DURATION = 10 * 1e3;
 var DEFAULT_TRANSITION_DURATION = 300;
+var parentHooks = new WeakMap();
 var motionHooks = new WeakMap();
+var presenceHooks = new WeakMap();
+function maybeGetPresence(el) {
+  const parent = el.parentElement;
+  const presenceEl = (parent == null ? void 0 : parent.hasAttribute("phx-hook")) && (parent == null ? void 0 : parent.getAttribute("phx-hook")) === "Presence" ? parent : void 0;
+  return presenceEl && presenceHooks.get(presenceEl);
+}
+function createPresenceHook() {
+  window.addEventListener("live_motion:hide", (e) => {
+    const { target } = e;
+    const presenceHook = maybeGetPresence(target);
+    if (presenceHook && !presenceHook.exiting) {
+      presenceHook.exitTransition(target, () => !presenceHook.exiting && presenceHook.mountComponents());
+    }
+  });
+  const Presence = {
+    mountComponents() {
+      this.mounts.forEach((fn) => fn());
+      this.mounts = [];
+    },
+    cleanup() {
+      this.mounts.forEach((fn) => fn());
+      this.mounts = [];
+    },
+    exitTransition(exitEl, done) {
+      var _a;
+      const motion = motionHooks.get(exitEl);
+      if (motion) {
+        const duration = getDuration((_a = motion.getConfig()) == null ? void 0 : _a.transition);
+        liveSocket.transition(duration + 50, () => {
+          var _a2;
+          motion.el.addEventListener("motioncomplete", () => {
+            motion.el.style.display = "none";
+            this.exiting = false;
+            this.cleanup();
+            done == null ? void 0 : done();
+          }, {
+            once: true
+          });
+          this.exiting = true;
+          (_a2 = motion.state) == null ? void 0 : _a2.setActive("exit", true);
+        });
+      }
+    },
+    addMount(fn) {
+      this.mounts.push(fn);
+      if (this.unmounts.length === 0) {
+        this.mountComponents();
+      }
+    },
+    addCleanup(fn) {
+      this.unmounts.push(fn);
+    },
+    mounted() {
+      this.exiting = false;
+      this.mounts = [];
+      this.unmounts = [];
+      presenceHooks.set(this.el, this);
+    },
+    destroyed() {
+      this.cleanup();
+      presenceHooks.delete(this.el);
+    }
+  };
+  return Presence;
+}
 function createMotionHook() {
   function registerEventHandlers() {
     const config = this.getConfig();
@@ -1698,74 +1767,95 @@ function createMotionHook() {
       this.el.addEventListener("motioncomplete", this.eventHandlers["motioncomplete"]);
     }
   }
+  function maybeGetParent(el) {
+    var _a;
+    const parentElement = (_a = el.parentElement) == null ? void 0 : _a.closest("[data-motion]");
+    return parentElement && motionHooks.get(parentElement);
+  }
   return {
-    Motion: {
-      getConfig() {
-        return getMotionConfig(this.el);
-      },
-      getMotionOptions() {
-        var _a;
-        const config = this.getConfig();
-        if (!config) {
-          return void 0;
+    getConfig() {
+      return this.el.dataset.motion ? JSON.parse(this.el.dataset.motion) : void 0;
+    },
+    getMotionOptions() {
+      var _a;
+      const config = this.getConfig();
+      if (!config) {
+        return void 0;
+      }
+      const translateEasing = () => {
+        const { transition: transition2 } = config;
+        if ((transition2 == null ? void 0 : transition2.easing) === "spring") {
+          return spring2();
         }
-        const translateEasing = () => {
-          const { transition: transition2 } = config;
-          if ((transition2 == null ? void 0 : transition2.easing) === "spring") {
-            return spring2();
-          }
-          if ((transition2 == null ? void 0 : transition2.easing) === "glide") {
-            return glide2();
-          }
-          if (typeof (transition2 == null ? void 0 : transition2.easing) === "object" && !Array.isArray(transition2.easing)) {
-            if (transition2.easing.spring) {
-              return spring2(transition2.easing.spring);
-            }
-            if (transition2.easing.glide) {
-              return glide2(transition2.easing.glide);
-            }
-          }
-          return transition2 == null ? void 0 : transition2.easing;
-        };
-        const transition = ((_a = config.transition) == null ? void 0 : _a.easing) ? __spreadProps(__spreadValues({}, config.transition), { easing: translateEasing() }) : config.transition;
-        const options = {
-          initial: config.initial,
-          animate: config.animate,
-          exit: config.exit,
-          hover: config.hover,
-          press: config.press,
-          inView: config.in_view,
-          inViewOptions: config.in_view_options,
-          transition
-        };
-        return compactObj(options);
-      },
-      maybeAnimate(options) {
-        const { force = false } = options || {};
-        const config = this.getConfig();
-        const motionOptions = this.getMotionOptions();
-        if (this.state && motionOptions && config && (!(config == null ? void 0 : config.defer) || force)) {
-          this.state.update(motionOptions);
+        if ((transition2 == null ? void 0 : transition2.easing) === "glide") {
+          return glide2();
         }
-      },
-      mounted() {
-        motionHooks.set(this.el, this);
-        registerEventHandlers.apply(this);
-        this.state = createMotionState(this.getMotionOptions());
+        if (typeof (transition2 == null ? void 0 : transition2.easing) === "object" && !Array.isArray(transition2.easing)) {
+          if (transition2.easing.spring) {
+            return spring2(transition2.easing.spring);
+          }
+          if (transition2.easing.glide) {
+            return glide2(transition2.easing.glide);
+          }
+        }
+        return transition2 == null ? void 0 : transition2.easing;
+      };
+      const transition = ((_a = config.transition) == null ? void 0 : _a.easing) ? __spreadProps(__spreadValues({}, config.transition), { easing: translateEasing() }) : config.transition;
+      const options = {
+        initial: config.initial,
+        animate: config.animate,
+        exit: config.exit,
+        hover: config.hover,
+        press: config.press,
+        inView: config.in_view,
+        inViewOptions: config.in_view_options,
+        transition
+      };
+      return withoutEmptyValues(options);
+    },
+    maybeAnimate(options) {
+      const { force = false } = options || {};
+      const config = this.getConfig();
+      const motionOptions = this.getMotionOptions();
+      if (this.state && motionOptions && config && (!(config == null ? void 0 : config.defer) || force)) {
+        this.state.update(motionOptions);
+      }
+    },
+    mounted() {
+      motionHooks.set(this.el, this);
+      const parentHook = maybeGetParent(this.el);
+      if (parentHook) {
+        parentHooks.set(this.el, parentHook);
+      }
+      registerEventHandlers.apply(this);
+      this.state = createMotionState(this.getMotionOptions(), parentHook == null ? void 0 : parentHook.state);
+      const presenceHook = maybeGetPresence(this.el);
+      if (presenceHook) {
+        const display = this.el.style.display;
+        this.el.style.display = "none";
+        presenceHook.addMount(() => {
+          if (this.state) {
+            presenceHook.addCleanup(this.state.mount(this.el));
+            this.el.style.display = display;
+            this.maybeAnimate();
+          }
+        });
+      } else {
         this.cleanup = this.state.mount(this.el);
         this.maybeAnimate();
-      },
-      destroyed() {
-        var _a;
-        if (this.eventHandlers) {
-          Object.entries(this.eventHandlers).forEach(([e, fn]) => this.el.removeEventListener(e, fn));
-        }
-        motionHooks.delete(this.el);
-        (_a = this.cleanup) == null ? void 0 : _a.call(this);
-      },
-      updated() {
-        this.maybeAnimate();
       }
+    },
+    destroyed() {
+      var _a;
+      if (this.eventHandlers) {
+        Object.entries(this.eventHandlers).forEach(([e, fn]) => this.el.removeEventListener(e, fn));
+      }
+      parentHooks.delete(this.el);
+      motionHooks.delete(this.el);
+      (_a = this.cleanup) == null ? void 0 : _a.call(this);
+    },
+    updated() {
+      this.maybeAnimate();
     }
   };
 }
@@ -1793,20 +1883,18 @@ function createLiveMotion() {
     var _a;
     const { target } = e;
     const motion = motionHooks.get(target);
+    const presence = maybeGetPresence(target);
     if (!motion && liveSocket.isDebugEnabled()) {
       console.warn("[LiveMotion] Motion element not found. Did you forget to make your target a LiveMotion.motion component?");
     }
-    if (motion) {
+    if (!presence && motion) {
       const duration = getDuration((_a = motion.getConfig()) == null ? void 0 : _a.transition);
       liveSocket.transition(duration, () => {
         var _a2;
-        const motion2 = motionHooks.get(target);
-        if (motion2) {
-          motion2.el.addEventListener("motioncomplete", () => motion2.el.style.display = "none", {
-            once: true
-          });
-          (_a2 = motion2.state) == null ? void 0 : _a2.setActive("exit", true);
-        }
+        motion.el.addEventListener("motioncomplete", () => motion.el.style.display = "none", {
+          once: true
+        });
+        (_a2 = motion.state) == null ? void 0 : _a2.setActive("exit", true);
       });
     }
   });
@@ -1837,7 +1925,10 @@ function createLiveMotion() {
     }
   });
   return {
-    hook: createMotionHook(),
+    hooks: {
+      Motion: createMotionHook(),
+      Presence: createPresenceHook()
+    },
     handleMotionUpdates
   };
 }
@@ -1847,9 +1938,6 @@ function getDuration(transition) {
     return transition.duration * 1e3;
   }
   return isPhysics ? MAX_TRANSITION_DURATION : typeof (transition == null ? void 0 : transition.duration) !== "undefined" ? transition.duration * 1e3 : DEFAULT_TRANSITION_DURATION;
-}
-function getMotionConfig(el) {
-  return el.dataset.motion ? JSON.parse(el.dataset.motion) : void 0;
 }
 export {
   createLiveMotion
