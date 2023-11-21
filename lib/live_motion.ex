@@ -294,7 +294,7 @@ defmodule LiveMotion do
   attr :id, :string, required: true, doc: "A unique dom element id for the component."
   attr :rest, :global,
        doc: " Additional HTML attributes to add to the tag, ensuring proper escaping."
-
+  slot :inner_block
   def presence(assigns) do
     ~H"""
     <div id={@id} phx-hook="Presence" {@rest}>
